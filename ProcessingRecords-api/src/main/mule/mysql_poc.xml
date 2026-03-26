@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="302281cd-b96f-42f7-94d3-3d59859be526" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Aurosmit@2001" database="mule_poc" />
+	</db:config>
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="37a2a690-51b6-483c-beb5-7a518b4cabd5" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="schedulerFlow" doc:id="6e430dea-cae2-451d-835f-79803656c56f" >
+		<scheduler doc:name="Scheduler" doc:id="16bbb624-9cb4-407a-80a4-a75fcd17db3f" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="10" timeUnit="SECONDS"/>
+			</scheduling-strategy>
+		</scheduler>
+		<logger level="INFO" doc:name="Starting Flow Logger" doc:id="41b76e15-e99f-43b5-93c8-2a83de00346c" message="flow started"/>
+		<db:insert doc:name="Create New Job" doc:id="0e1c114b-c841-4a3d-b00e-32e4a565bd80" config-ref="Database_Config" autoGenerateKeys="true">
+			<db:sql ><![CDATA[INSERT INTO job_audit (job_name, start_time, status, total_records, processed_records, failed_records)
+VALUES ('POC_JOB', NOW(), 'RUNNING', 0, 0, 0)
+]]></db:sql>
+			<db:auto-generated-keys-column-names >
+				<db:auto-generated-keys-column-name value="job_id" />
+			</db:auto-generated-keys-column-names>
+		</db:insert>
+		<set-variable value="#[payload.generatedKeys[0]]" doc:name="Job Id " doc:id="dfefb7d7-86b8-4544-90af-2c2cab661772" variableName="jobId"/>
+		<db:update doc:name="Lock Records" doc:id="0ab2461c-0f4e-46e3-ab62-01bcc1802b65" config-ref="Database_Config">
+			<db:sql><![CDATA[UPDATE source_table
+SET processed_flag = 2,
+    job_id = :jobId
+WHERE processed_flag = 0
+LIMIT 2000;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+    jobId: vars.jobId
+  }]]]></db:input-parameters>
+		</db:update>
+		<db:select doc:name="Fetch data from source_table" doc:id="87879dde-361a-471d-b4e3-2ad8f2af7b35" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT *
+FROM source_table
+WHERE job_id = :jobId;]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+    jobId: vars.jobId
+  }]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[sizeOf(payload)]" doc:name="total records fetched" doc:id="f79b43fb-51e3-4a27-8c14-cf0e446e5538" variableName="totalRecords"/>
+		<set-variable value="#[payload]" doc:name="fetched records" doc:id="15520f66-6ff0-415a-949b-0a28baf35966" variableName="records"/>
+		<db:update doc:name="Update job_audit table with with total fetched records" doc:id="78d294c3-7974-401e-96db-dfcac518e713" config-ref="Database_Config">
+			<db:sql ><![CDATA[UPDATE job_audit 
+SET total_records = :total 
+WHERE job_id = :jobId]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+  total: vars.totalRecords,
+  jobId: vars.jobId
+}]]]></db:input-parameters>
+		</db:update>
+		<choice doc:name="Choice" doc:id="1d2e88de-e38d-493a-911e-1ef9e6847248" >
+			<when expression="#[vars.totalRecords&gt; 0]">
+				<set-payload value="#[vars.records]" doc:name="fetched records payload" doc:id="18802929-e061-465b-8fe4-db8392304797" />
+				<batch:job jobName="processBatchJob" doc:id="06be9613-8371-4138-bee1-ef7eb807b284" blockSize="2000">
+					<batch:process-records >
+						<batch:step name="Batch_Step1" doc:id="8939e149-64a3-4c19-8f1e-f65f80eb356c" >
+							<try doc:name="Try" doc:id="b66b4759-2f6b-435e-9c96-770399b74b2e" >
+								<set-variable value="#[payload]" doc:name="store fetched records" doc:id="a2ab7072-b24f-448d-9a0e-d06639880140" variableName="originalPayload" />
+								<db:insert doc:name="Insert payload into target_table" doc:id="78fa8c94-52c4-4400-981a-5f45bfeed1ae" config-ref="Database_Config">
+							<db:sql><![CDATA[INSERT INTO target_table (id, data_col)
+VALUES (:id, :data_col)]]></db:sql>
+							<db:input-parameters><![CDATA[#[{
+  id: payload.id,
+  data_col: payload.data_col
+}]]]></db:input-parameters>
+						</db:insert>
+								<db:update doc:name="Update source table " doc:id="f0a31121-8e92-4bda-9259-1cf3d5cd7e43" config-ref="Database_Config">
+							<db:sql><![CDATA[UPDATE source_table 
+SET processed_flag = 1 
+WHERE id = :id]]></db:sql>
+							<db:input-parameters><![CDATA[#[{
+  id: vars.originalPayload.id
+}]]]></db:input-parameters>
+						</db:update>
+								<error-handler >
+									<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="fcab869b-b1cc-46a1-b3c8-d348a8e71cfb" type="ANY">
+								<logger level="INFO" doc:name="Logger" doc:id="7a608a0c-5e08-40ce-915b-8d13ec65419f" message='records failed' />
+							</on-error-continue>
+								</error-handler>
+							</try>
+						</batch:step>
+					</batch:process-records>
+					<batch:on-complete >
+						<ee:transform doc:name="Transform Message" doc:id="7b022ee4-e68e-4242-810d-7864028d9fc1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+  processed: payload.successfulRecords default 0,
+  failed: payload.failedRecords default 0,
+  status: if ((payload.failedRecords default 0) > 0) 
+            "COMPLETED_WITH_ERRORS" 
+          else 
+            "COMPLETED",
+  jobId: vars.jobId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+						<db:update doc:name="Update Job_audit table" doc:id="def97458-f41e-4079-9157-d664ea134ab6" config-ref="Database_Config">
+					<db:sql><![CDATA[UPDATE job_audit 
+SET 
+  end_time = NOW(),
+  processed_records = :processed,
+  failed_records = :failed,
+  status = :status
+WHERE job_id = :jobId]]></db:sql>
+					<db:input-parameters><![CDATA[#[payload]]]></db:input-parameters>
+				</db:update>
+						<logger level="INFO" doc:name="Flow end Logger" doc:id="9c612075-af52-4e56-a3c8-ffd30b9493c4" message="Flow ended"/>
+					</batch:on-complete>
+				</batch:job>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="bb7f775d-9d93-49cf-bdcf-161980d37590" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+  processed: 0,
+  failed: 0,
+  status: "COMPLETED",
+  jobId: vars.jobId
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<db:update doc:name="Update Job Audit" doc:id="52d7e2a6-feda-4e1c-b2c1-33be2fb02d07" config-ref="Database_Config">
+					<db:sql ><![CDATA[UPDATE job_audit 
+SET 
+  end_time = NOW(),
+  processed_records = :processed,
+  failed_records = :failed,
+  status = :status
+WHERE job_id = :jobId]]></db:sql>
+					<db:input-parameters ><![CDATA[#[payload]]]></db:input-parameters>
+				</db:update>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
