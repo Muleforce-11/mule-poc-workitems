@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+      http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+      http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="0.0.0.0" port="8081"/>
+    </http:listener-config>
+
+    <db:config name="Postgres_Config">
+        <db:generic-connection
+            driverClassName="org.postgresql.Driver"
+            url="jdbc:postgresql://localhost:5432/transaction_poc"
+            user="postgres"
+            password="postgres"/>
+    </db:config>
+
+    <flow name="bank-transfer-flow">
+
+        <http:listener config-ref="HTTP_Listener_config" path="/amountTransfer">
+    <http:response statusCode="#[vars.httpStatus default 200]"/>
+    <http:error-response statusCode="#[vars.httpStatus default 500]"/>
+</http:listener>
+
+        <!-- Step 2: Save payload before db:update overwrites it -->
+        <set-variable variableName="req" value="#[payload]"/>
+
+        <!-- Step 3: Open local transaction -->
+        <try transactionalAction="ALWAYS_BEGIN" transactionType="LOCAL">
+
+            <!-- Step 4: Debit sender — only if balance is sufficient -->
+            <db:update config-ref="Postgres_Config" doc:name="Debit Sender">
+                <db:sql><![CDATA[
+                    UPDATE bank_account
+                    SET    balance = balance - :amount
+                    WHERE  id      = :fromId
+                    AND    balance >= :amount
+                ]]></db:sql>
+                <db:input-parameters><![CDATA[#[{
+    fromId: vars.req.fromId,
+    amount: vars.req.amount
+}]]]></db:input-parameters>
+            </db:update>
+
+            <!-- Step 5: payload = number of rows updated
+                         Fix: cast to Number explicitly before comparing -->
+            <choice doc:name="debit successful">
+                <when expression="#[payload.affectedRows == 0]">
+                    <raise-error type="APP:LOW_BALANCE"
+                                 description="Low balance! Debit failed. Transaction rolled back."/>
+                </when>
+                <otherwise>
+                    <logger level="INFO"
+                            message="Debit OK — rows updated: #[payload]. Proceeding to credit."
+                            doc:name="Log Debit Success"/>
+                </otherwise>
+            </choice>
+
+            <!-- Step 6: Credit receiver -->
+            <db:update config-ref="Postgres_Config" doc:name="Credit Receiver">
+                <db:sql><![CDATA[
+                    UPDATE bank_account
+                    SET    balance = balance + :amount
+                    WHERE  id = :toId
+                ]]></db:sql>
+                <db:input-parameters><![CDATA[#[{
+                    toId:   vars.req.toId,
+                    amount: vars.req.amount
+                }]]]></db:input-parameters>
+            </db:update>
+
+            <!-- Step 7: Both success — transaction auto commits -->
+            <set-variable value="200" doc:name="Set Success Status" doc:id="e01b9e4f-9609-4296-b208-1d305646c314" variableName="Set Success Status"/>
+			<ee:transform doc:name="Success Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status      : "SUCCESS",
+    message     : "Transation Successfull",
+    fromAccount : vars.req.fromId,
+    toAccount   : vars.req.toId,
+    amount      : vars.req.amount
+}]]></ee:set-payload>
+                    <ee:set-attributes><![CDATA[%dw 2.0
+output application/java
+---
+{ "http.status": "200" }]]></ee:set-attributes>
+                </ee:message>
+            </ee:transform>
+
+            <!-- Step 8: Any error inside = rollback + re-throw to outer handler -->
+            <error-handler>
+                <on-error-propagate type="ANY" doc:name="Rollback on any error"/>
+            </error-handler>
+
+        </try>
+
+        <!-- Step 9: Build clean failure response after rollback -->
+        <error-handler>
+            <on-error-continue type="ANY" doc:name="Return error response">
+                <set-variable value="400" doc:name="Set Failure Status" doc:id="b2efc137-da2e-4c8c-b8e6-6e3f5654f6a3" variableName="httpStatus"/>
+				<ee:transform doc:name="Failure Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status  : "FAILED",
+    message :
+        if ((error.description default "") contains "Low balance")
+            "Insufficient balance."
+        else
+            "Transaction failed.",
+    note    : "Transaction rolled back. No balance changed."
+}]]></ee:set-payload>
+                        <ee:set-attributes><![CDATA[%dw 2.0
+output application/java
+---
+{ "http.status": "400" }]]></ee:set-attributes>
+                    </ee:message>
+                </ee:transform>
+            </on-error-continue>
+        </error-handler>
+
+    </flow>
+
+</mule>
