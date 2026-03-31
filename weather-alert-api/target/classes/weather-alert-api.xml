@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="e0295935-a9de-4eda-b17f-e1881b84f25e" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_config" doc:name="HTTP Request config" doc:id="922e9b31-b2cc-4579-91cd-c44d94ca4e7e" >
+		<http:request-connection host="${weather.host}" port="${weather.port}" protocol="HTTPS"/>
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="ddf68d16-af01-4596-97b4-ed612f70408d" file="config.properties" />
+	<email:smtp-config name="Email_SMTP" doc:name="Email SMTP" doc:id="b341070d-ea22-4b78-9f95-26f862164d23" >
+		<email:smtp-connection host="smtp.gmail.com" port="587" user="${email.from}" password="${email.apppwd}" >
+			<email:properties >
+				<email:property key="mail.smtp.auth" value="true" />
+				<email:property key="mail.smtp.starttls.enable" value="true" />
+			</email:properties>
+		</email:smtp-connection>
+	</email:smtp-config>
+	<flow name="weather-alert-api-flow" doc:id="247760f1-4dc9-407e-b63f-3d36433cc195" >
+		<http:listener doc:name="Listener" doc:id="d100f184-2349-4d5b-b604-0b9dbad66cff" config-ref="HTTP_Listener_config" path="/weather/alert"/>
+		<set-variable value='#[attributes.queryParams.city default "Hyderabad"]' doc:name="cityName" doc:id="429b25fc-81ac-45ab-b373-4deeded830b3" variableName="city"/>
+		<http:request doc:name="Request" doc:id="f3f7533f-7913-4bc1-bc96-906a5b5817d0" config-ref="HTTP_Request_config" path="/data/2.5/weather">
+			<http:query-params ><![CDATA[#[output application/json
+---
+{
+	q : vars.city,
+	appid : p("weather.api.key"),
+	units: "metric"
+}]]]></http:query-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="4c412d7c-5df7-4b6c-8520-f2898fb6a29f" message="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="9246a1a9-72ec-40de-9c68-6beeb69b1853">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    city: payload.name,
+    country: payload.sys.country,
+    temperatureC: payload.main.temp,
+    feelsLikeC: payload.main.feels_like,
+    humidity: payload.main.humidity,
+    windKph: (payload.wind.speed default 0) * 3.6,
+    condition: payload.weather[0].main default "",
+    description: payload.weather[0].description default ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Build Alert" doc:id="d6859325-b0ac-4236-803a-dffeff4a135e">
+			<when expression="#[(payload.temperatureC default 0) &gt;= 35]">
+				<ee:transform doc:name="Transform Message" doc:id="c225bc5d-d003-454e-8371-c465c1b49604" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "HEAT_ALERT",
+    subject: "Heat Alert - " ++ payload.city,
+    message: "High temperature detected in " ++ payload.city ++
+             ". Temperature: " ++ (payload.temperatureC as String) ++ " C, Feels Like: " ++
+             (payload.feelsLikeC as String) ++ " C, Humidity: " ++ (payload.humidity as String) ++ "%"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[(lower(payload.condition default "") contains "rain")]'>
+				<ee:transform doc:name="Transform Message" doc:id="5e9d2ccb-3921-4ecb-9e8b-c9c5a7ee7371" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "RAIN_ALERT",
+    subject: "Rain Alert - " ++ payload.city,
+    message: "Rain expected/detected in " ++ payload.city ++
+             ". Condition: " ++ payload.description ++
+             ", Temperature: " ++ (payload.temperatureC as String) ++ " C"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[(lower(payload.condition default "") contains "storm") or (lower(payload.condition default "") contains "thunder")]'>
+				<ee:transform doc:name="Transform Message" doc:id="a71170cc-3fe4-4c09-9ebf-d25f306b70bd" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "STORM_ALERT",
+    subject: "Storm Alert in - " ++ payload.city,
+    message: "Storm/Thunder expected in " ++ payload.city ++
+             ". Condition: " ++ payload.description ++
+             ", Temperature: " ++ (payload.temperatureC as String) ++ " C"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[payload.windKph &gt;= 50]">
+				<ee:transform doc:name="Transform Message" doc:id="60768ded-8d22-4fdb-9881-da12c78e9ec5" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "WIND_ALERT",
+    subject: "Wind Alert - " ++ payload.city,
+    message: "High Wind detected in " ++ payload.city ++
+             ". Condition: " ++ payload.description ++
+             ", Temperature: " ++ (payload.temperatureC as String) ++ " C"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[(lower(payload.condition default "") contains "haze")]'>
+				<ee:transform doc:name="Transform Message" doc:id="92952edd-8a41-46c2-8659-f0727b1533da" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "HAZE_ALERT",
+    subject: "Haze Alert - " ++ payload.city,
+    message: "Haze detected in " ++ payload.city ++
+             ". Condition: " ++ payload.description ++
+             ", Temperature: " ++ (payload.temperatureC as String) ++ " C"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="b07fd0f8-c372-4a03-ada5-75ec5f17b660" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    alertType: "NORMAL",
+    subject: "",
+    message: "No alert"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="After Build Alert" doc:id="6e247089-4328-43fe-87d8-40222095d689" message="#[payload.alertType]"/>
+		<choice doc:name="Send Email or Skip" doc:id="d285fed2-cf94-4714-9dae-80adf3f74786" >
+			<when expression='#[payload.alertType != "NORMAL"]'>
+				<set-variable value="#[payload.subject as String]" doc:name="MailSubject" doc:id="bba4ee43-7d86-4ff6-8f90-978b270cd9a4" variableName="MailSubject"/>
+				<ee:transform doc:name="Transform Message" doc:id="2a34ddf7-6c5a-4cc9-94ca-776d8c453101">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+	body: payload.message as String
+}
+ ]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<email:send doc:name="Send" doc:id="e42a13e3-b476-4a31-80c6-c0e87fd50c1c" config-ref="Email_SMTP" subject='#[vars.MailSubject]'>
+					<email:to-addresses >
+						<email:to-address value="hema.priya@nexturn.com" />
+					</email:to-addresses>
+					<email:body contentType="text/plain">
+						<email:content ><![CDATA[#[payload.body]]]></email:content>
+					</email:body>
+				</email:send>
+			
+</when>
+			<otherwise >
+				<logger level="INFO" doc:name="No Alert" doc:id="d2b02256-3eaa-4162-82fa-aa4a5f1a1270" message='"No weather alert mail sent"'/>
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message" doc:id="4febb7b5-7aa5-4bf8-b3da-0689b904d51a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Final Response" doc:id="5e04dd37-4244-44a6-8e70-76580c66cc15" message="#[payload]"/>
+	</flow>
+</mule>
