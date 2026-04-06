@@ -1,0 +1,16 @@
+#%RAML 1.0 ResourceType
+usage: Base resource with common methods
+
+post:
+  description: Creates a new resource
+  body:
+    
+
+    multipart/form-data:
+      type: any
+
+  responses:
+    200:
+      body:
+        application/json:
+          type: <<responseType>>

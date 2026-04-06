@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+      http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+      http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+      http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- MAIN IMPLEMENTATION -->
+    <sub-flow name="implementation">
+
+        <logger level="INFO" message='#[{
+            message: "Incoming multipart payload",
+            payload: payload
+        }]' />
+
+        <!-- STEP 1: PREPARE REQUEST -->
+        <ee:transform doc:name="Prepare OpenAI Request">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+
+var fileText =
+    if (payload.parts.file? and payload.parts.file.content?)
+        read(payload.parts.file.content, "application/octet-stream") as String
+    else
+        ""
+
+var question =
+    if (payload.parts.question? and payload.parts.question.content?)
+        payload.parts.question.content as String
+    else
+        "Summarize this document"
+
+---
+{
+    "model": 
+        if (payload.parts.model? and payload.parts.model.content?)
+            payload.parts.model.content as String
+        else
+            "gpt-5-nano",
+
+    "input": question ++ "\n\nDOCUMENT:\n" ++ fileText,
+
+    "store": false
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- STEP 2: CALL OPENAI -->
+        <flow-ref name="httpRequestSubflow"/>
+
+        <!-- STEP 3: TRANSFORM RESPONSE -->
+        <ee:transform doc:name="Transform OpenAI Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    id: payload.id,
+    response: payload."output".content[0].text[0] replace "\n" with " "
+}
+]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO" message='#[{
+            message: "Final response",
+            payload: payload
+        }]' />
+
+    </sub-flow>
+
+
+    <!-- HTTP CALL -->
+    <sub-flow name="httpRequestSubflow">
+
+        <logger level="INFO" message='"Calling OpenAI API"' />
+
+        <until-successful maxRetries="3" millisBetweenRetries="2000">
+
+            <http:request method="POST"
+                          config-ref="HTTP_Request_configuration"
+                          path="${http.requestor.path}"
+                          responseTimeout="60000">
+
+                <http:headers><![CDATA[#[{
+                    "Authorization": "Bearer " ++ p('http.requestor.apiKey'),
+                    "Content-Type": "application/json"
+                }]]]></http:headers>
+
+            </http:request>
+
+        </until-successful>
+
+        <logger level="INFO" message='#[{
+            message: "Raw response from OpenAI",
+            payload: payload
+        }]' />
+
+    </sub-flow>
+
+</mule>

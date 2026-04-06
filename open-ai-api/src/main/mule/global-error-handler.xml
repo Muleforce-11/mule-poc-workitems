@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<error-handler name="system-error-handler" doc:id="39ba2b60-238a-41b6-9e9a-f253e900c574" >
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="6ffe2395-0e7a-4bd4-83b8-2a828ede17db" type="ANY">
+			<set-variable value='#[%dw 2.0&#10;output application/json&#10;---&#10;error.errorType.identifier match {&#10;              case "BAD_REQUEST" -&gt; "400"&#10;              case "NOT_FOUND" -&gt; "404"&#10;              case "METHOD_NOT_ALLOWED" -&gt; "405"&#10;              case "UNAUTHORIZED" -&gt; "401"&#10;              case "FORBIDDEN" -&gt; "403"&#10;              case "UNSUPPORTED_MEDIA_TYPE" -&gt; "415"&#10;              case "TOO_MANY_REQUESTS" -&gt; "429"&#10;              case "SERVICE_UNAVAILABLE" -&gt; "503"&#10;              case "TIMEOUT" -&gt; "504"&#10;              else -&gt; "500"&#10;}]' doc:name="Set Variable" doc:id="cc12fdbf-fff9-4f26-9fb9-6620ccb44ac8" variableName="errorStatusCode"/>
+			<ee:transform doc:name="Transform Message" doc:id="983a57af-dcbb-4700-b897-e5da73f419ac" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": vars.errorStatusCode,
+    "errorType": error.errorType.identifier default "INTERNAL_SERVER_ERROR",
+    "message": error.description default "Unexpected error occurred",
+    "details": error.errorMessage.payload default ""
+}]]></ee:set-payload>
+				</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="httpStatus" ><![CDATA[vars.errorStatusCode]]></ee:set-variable>
+				</ee:variables>
+			</ee:transform>
+			<logger level="ERROR" doc:name="Logger" doc:id="5aa290f5-4014-4a1e-955a-80afe53c31bc" message='"Error occurred: " ++ error.description'/>
+		</on-error-propagate>
+	</error-handler>
+</mule>

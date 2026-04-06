@@ -1,0 +1,22 @@
+https:
+  host: "localhost"
+  port: "8081"
+  
+http:
+  listener:
+    host: "localhost"
+    port: "8081"
+    path: "api/*"
+    
+  requestor:
+    host: "api.openai.com"
+    Content-Type: "application/json"
+    port: "443"
+    path: "/v1/responses"
+    apiKey: "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"
+mule:
+  env: "dev"   
+secure:
+  key: "mule12345"
+InstanceId:
+  Id: "20271212"

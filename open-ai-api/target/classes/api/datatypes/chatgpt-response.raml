@@ -1,0 +1,16 @@
+#%RAML 1.0 DataType
+description: Response from OpenAI
+
+properties:
+  id:
+    type: string
+    example: "resp_123456"
+  
+  response:
+    type: array
+    items:
+      type: string
+    example:
+      [
+        "MuleSoft is a software platform for integration and API management."
+      ]

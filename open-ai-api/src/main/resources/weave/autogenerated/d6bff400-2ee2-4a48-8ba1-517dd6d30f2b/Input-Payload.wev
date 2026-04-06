@@ -1,0 +1,9 @@
+%dw 2.0
+
+type auto_d6bff400_2ee2_4a48_8ba1_517dd6d30f2b_Input_Payload = {
+  messages: Array<{    role: "system" | "assistant" | "user",     content: String,     _?: Any  }>, 
+  model: String, 
+  store: Boolean, 
+  _?: Any
+} {"description": "Request payload for ChatGPT API"}
+

@@ -1,0 +1,30 @@
+#%RAML 1.0
+title: openai-sys-api
+baseUri: http://localhost:8081/api
+
+types:
+  ChatGPTResponse: !include datatypes/chatgpt-response.raml
+
+resourceTypes:
+  base: !include resourceTypes/base.raml
+
+/sys/chatgpt:
+  type:
+    base:
+      responseType: ChatGPTResponse
+  post:
+    body:
+      multipart/form-data:
+        properties:
+          file:
+            type: file
+            required: true
+          question:
+            type: string
+            required: false
+            example: "Summarize this"
+          model:
+            type: string
+            required: false
+            enum: [ "gpt-5-nano" ]
+            example: "gpt-5-nano"

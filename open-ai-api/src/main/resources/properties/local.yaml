@@ -1,0 +1,19 @@
+https:
+  host: "localhost"
+  port: "8081"
+  
+http:
+  listener:
+    host: "localhost"
+    port: "8081"
+    path: "api/*"
+    
+  requestor:
+    host: "api.openai.com"
+    Content-Type: "application/json"
+    port: "443"
+    path: "/v1/chat/completions"
+    apiKey: "Bearer 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"
+   
+InstanceId:
+  Id: "20271212"
