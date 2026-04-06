@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+ 
+<mule xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+ 
+    <!-- 🔌 HTTP Config -->
+    <http:listener-config name="HTTP_Listener_Config">
+        <http:listener-connection host="0.0.0.0" port="8081"/>
+    </http:listener-config>
+ 
+    <!-- 🗄️ DB Config -->
+<db:config name="Database_Config">
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="maruthi" database="company_db" />
+    </db:config>
+ 
+
+ 
+    <flow name="employee-system-api">
+ 
+        <!-- ✅ Correct wildcard -->
+        <http:listener path="/system/v1/*"
+                       config-ref="HTTP_Listener_Config"/>
+ 
+        <choice>
+ 
+           
+            <when expression="#[attributes.method == 'GET' and attributes.requestPath == '/system/v1/employees']">
+                
+                <db:select config-ref="Database_Config">
+                    <db:sql><![CDATA[
+                        SELECT * FROM employees
+                    ]]></db:sql>
+                </db:select>
+ 
+                <!-- ✅ FIX: Convert to JSON -->
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+payload
+]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+ 
+            </when>
+ 
+         
+            <when expression="#[attributes.method == 'GET' and sizeOf(attributes.requestPath splitBy '/') == 5]">
+ 
+                <set-variable variableName="empId"
+                              value="#[(attributes.requestPath splitBy '/')[4]]"/>
+ 
+                <db:select config-ref="Database_Config">
+                    <db:sql><![CDATA[
+                        SELECT * FROM employees WHERE id = :id
+                    ]]></db:sql>
+                    <db:input-parameters><![CDATA[
+                        #[{ id: vars.empId }]
+                    ]]></db:input-parameters>
+                </db:select>
+ 
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+payload[0] default { message: "Employee not found" }
+]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+ 
+            </when>
+ 
+         
+            <when expression="#[attributes.method == 'POST']">
+ 
+                <db:insert config-ref="Database_Config">
+                    <db:sql><![CDATA[
+                        INSERT INTO employees (id, name, department, email)
+                        VALUES (:id, :name, :department, :email)
+                    ]]></db:sql>
+                    <db:input-parameters><![CDATA[
+                        #[payload]
+                    ]]></db:input-parameters>
+                </db:insert>
+ 
+                <set-payload value='{"message": "Employee created"}'
+                             mimeType="application/json"/>
+            </when>
+ 
+           
+            <when expression="#[attributes.method == 'PUT']">
+ 
+                <set-variable variableName="empId"
+                              value="#[(attributes.requestPath splitBy '/')[4]]"/>
+ 
+                <db:update config-ref="Database_Config">
+                    <db:sql><![CDATA[
+                        UPDATE employees
+                        SET name = :name,
+                            department = :department,
+                            email = :email
+                        WHERE id = :id
+                    ]]></db:sql>
+                    <db:input-parameters><![CDATA[
+                        #[payload ++ { id: vars.empId }]
+                    ]]></db:input-parameters>
+                </db:update>
+ 
+                <set-payload value='{"message": "Employee updated"}'
+                             mimeType="application/json"/>
+            </when>
+ 
+          
+            <when expression="#[attributes.method == 'DELETE']">
+ 
+                <set-variable variableName="empId"
+                              value="#[(attributes.requestPath splitBy '/')[4]]"/>
+ 
+                <db:delete config-ref="Database_Config">
+                    <db:sql><![CDATA[
+                        DELETE FROM employees WHERE id = :id
+                    ]]></db:sql>
+                    <db:input-parameters><![CDATA[
+                        #[{ id: vars.empId }]
+                    ]]></db:input-parameters>
+                </db:delete>
+ 
+                <set-payload value='{"message": "Employee deleted"}'
+                             mimeType="application/json"/>
+            </when>
+ 
+       
+           <otherwise>
+    <set-payload value='{}' mimeType="application/json"/>
+</otherwise>
+ 
+        </choice>
+ 
+      
+        <error-handler>
+            <on-error-propagate logException="true">
+                <set-payload value='#[{"error": "Something went wrong"}]'
+                             mimeType="application/json"/>
+            </on-error-propagate>
+        </error-handler>
+ 
+    </flow>
+ 
+</mule>

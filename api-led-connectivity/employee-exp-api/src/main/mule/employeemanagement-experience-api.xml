@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <http:listener-config name="HTTP_Listener_Config">
+        <http:listener-connection host="0.0.0.0" port="8083"/>
+    </http:listener-config>
+
+    <http:request-config name="Process_API_Config">
+        <http:request-connection host="localhost" port="8082"/>
+    </http:request-config>
+
+    <flow name="employee-experience-api">
+
+        <http:listener path="/experience/v1/employees/{id}"
+                       config-ref="HTTP_Listener_Config"/>
+
+        <set-variable variableName="empId" value="#[attributes.uriParams.id]"/>
+
+        <http:request method="GET"
+                      path="/process/v1/employees/{id}"
+                      config-ref="Process_API_Config">
+            <http:uri-params><![CDATA[#[{ id: vars.empId }]]]></http:uri-params>
+        </http:request>
+
+        <logger level="INFO" message="Process API Response: #[payload]"/>
+
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[
+%dw 2.0
+output application/json
+---
+{
+    employeeId: payload.id,
+    fullName: upper(payload.name),
+    department: payload.department,
+    contact: payload.email,
+    compensation: {
+        salary: payload.salary,
+        bonus: payload.bonus,
+        total: payload.totalCompensation
+    },
+    status: "ACTIVE"
+}
+]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate>
+                <set-payload value='{"error": "Experience API failed"}'
+                             mimeType="application/json"/>
+            </on-error-propagate>
+        </error-handler>
+
+    </flow>
+
+</mule>
