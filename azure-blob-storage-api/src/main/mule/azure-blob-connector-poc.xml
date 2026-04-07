@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<configuration-properties 
+        file="config.properties" 
+        doc:name="Configuration properties"/>
+        <azure-storage:config name="Azure_Storage_Config" doc:name="Azure Storage Config" doc:id="f7674c6b-12da-448e-8537-51bba46e8b3d" >
+		<azure-storage:access-key-azure-connection accountName="${azure.accountName}" accountKey="${azure.accountKey}" />
+	</azure-storage:config>
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="6b76da27-f312-4f72-affb-1c316f8f1703" >
+		<http:listener-connection host="${http.host}" port="${http.port}" />
+	</http:listener-config>
+	<flow name="azure-blob-connector-pocFlow" doc:id="758debe0-fc35-416d-a94e-232726b8b700" >
+		<http:listener doc:name="Listener" doc:id="6f9132ef-15aa-4500-969e-59b1b658bad3" config-ref="HTTP_Listener_config" path="${http.path}"/>
+		<logger level="INFO" doc:name="Logger" doc:id="4f392e38-e08b-431b-a40d-73ec686f15fd" message='#["Flow started - Checking blobs in mule-blob-01"]'/>
+		<azure-storage:list-blobs-in-container doc:name="List blobs in container" doc:id="aca6d74b-61df-44f5-ba03-adee4d1a2700" config-ref="Azure_Storage_Config" containerName="mule-blob-01"/>
+		<logger level="INFO" doc:name="Logger" doc:id="e80401d2-b852-4362-89e2-576d10a2fc76" message='#["Total blobs found: " ++ sizeOf(payload)]'/>
+		<choice doc:name="Choice" doc:id="aedcceb1-0b06-40d3-b4fb-5f9f59a44137" >
+			<when expression="#[sizeOf(payload) &gt; 0]">
+				<foreach doc:name="For Each" doc:id="5663fcd5-5bec-414e-8adf-7a17270e5457" collection="#[payload]">
+					<logger level="INFO" doc:name="Logger" doc:id="0e2ed7a6-76f7-4a4c-b026-15e5cbb55b1a" message="#[payload]"/>
+					<set-variable value='mule-blob-01' doc:name="container Name" doc:id="f9575415-be2e-4e5a-9ec2-cd51beaebc45" variableName="containerName"/>
+ <set-variable value="#[payload.blobName]" variableName="blobName" doc:name="Blob Name "/>					<azure-storage:download-blob doc:name="Download blob" doc:id="807cb1a4-43a4-4c56-92e5-8067f66b3ac8" config-ref="Azure_Storage_Config">
+						<azure-storage:blob container="#[vars.containerName]" fileName="#[vars.blobName]" />
+					</azure-storage:download-blob>
+					<azure-storage:delete-blob doc:name="Delete blob" doc:id="c6cb7578-820f-4410-b1d5-0b6a97ca0695" config-ref="Azure_Storage_Config">
+						<azure-storage:blob container="#[vars.containerName]" fileName="#[vars.blobName]" />
+					</azure-storage:delete-blob>
+					<logger level="INFO" doc:name="Logger" doc:id="1670df67-741e-4e1b-ab51-f3b6e5d60626" message='#["Blob downloaded and deleted: " ++ vars.blobName]'/>
+				</foreach>
+				<set-payload value='"Blobs downloaded and deleted successfully!"'
+        doc:name="Set Payload"/>
+			</when>
+			<otherwise >
+				<azure-storage:upload-blob doc:name="Upload blob" doc:id="305d7e00-8fbc-49c6-a747-04af2d542cd6" config-ref="Azure_Storage_Config" contentType="application/json">
+					<azure-storage:storblob container="mule-blob-01" fileName="test-file.json" fileStream='#[output application/json &#10;--- &#10;	{&#10;	"message": "Hello from MuleSoft!"&#10;	}]' />
+				</azure-storage:upload-blob>
+				<set-payload value='#["File uploaded successfully to Azure Blob!"]' doc:name="Set Payload" doc:id="64eaba26-2403-4988-a314-6c19f101605f" />
+				<logger level="INFO" doc:name="Logger" doc:id="e87d810f-c9e0-4a89-8d64-6c53b3370236" message='"New blob uploaded successfully!"'/>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
