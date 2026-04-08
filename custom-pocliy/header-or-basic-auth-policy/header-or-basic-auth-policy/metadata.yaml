@@ -1,6 +1,0 @@
-#%Policy Implementation 1.0
-minRuntimeVersion: 4.1.1
-supportedJavaVersions: ["8", "11", "17"]
-technology: mule4
-name: Header OR Basic Auth Policy
-releaseNotes: "Initial version with OR logic between x-client-name and Basic Auth"
