@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>c4bff25d-6a05-4ab2-accb-887d6940a819</groupId>
+    <artifactId>header-or-basic-auth-policy</artifactId>
+    <version>1.0.0</version>
+
+    <name>Header OR Basic Auth Policy</name>
+    <description>Allows request when x-client-name header OR valid Basic Auth is present</description>
+
+    <packaging>mule-policy</packaging>
+
+    <properties>
+        <mule.maven.plugin.version>3.3.6</mule.maven.plugin.version>
+        <exchange.url>
+            https://maven.anypoint.mulesoft.com/api/v2/organizations/c4bff25d-6a05-4ab2-accb-887d6940a819/maven
+        </exchange.url>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>mulesoft-public</id>
+            <url>https://repository.mulesoft.org/nexus/content/repositories/public/</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>mulesoft-public</id>
+            <url>https://repository.mulesoft.org/nexus/content/repositories/public/</url>
+        </pluginRepository>
+    </pluginRepositories>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.mule.tools.maven</groupId>
+                <artifactId>mule-maven-plugin</artifactId>
+                <version>${mule.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <distributionManagement>
+        <repository>
+            <id>exchange-server</id>
+            <name>Anypoint Exchange</name>
+            <url>${exchange.url}</url>
+        </repository>
+    </distributionManagement>
+
+</project>
