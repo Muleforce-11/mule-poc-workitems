@@ -1,0 +1,11 @@
+#%Policy Definition 0.1
+name: Header OR Basic Auth Policy
+description: Allows request when x-client-name header OR valid Basic Auth is present
+category: Security
+providedCharacteristics:
+  - Requires authentication
+requiredCharacteristics: []
+interfaceScope: ["api", "resource"]
+interfaceTransformation: []
+encryptionSupported: true
+violationCategory: authentication
