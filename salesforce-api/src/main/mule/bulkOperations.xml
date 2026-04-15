@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+<configuration-properties file="config.properties"/>
+	<salesforce:sfdc-config name="Salesforce_Config1" doc:name="Salesforce Config" doc:id="0a366768-8e1b-4105-bad3-b41e64e631fe" >
+		<salesforce:config-with-oauth-connection >
+			<salesforce:oauth-authorization-code consumerKey="${salesforce.consumerKey}" consumerSecret="${salesforce.consumerSecret}"/>
+			<salesforce:oauth-callback-config listenerConfig="HTTP_Listener_config" callbackPath="/callback" authorizePath="/authorize" externalCallbackUrl="http://localhost:8081/callback" />
+		</salesforce:config-with-oauth-connection>
+	</salesforce:sfdc-config>
+	<flow name="bulkInsertFlow" doc:id="a83d0c79-d78d-4c6b-92fa-397407350586" >
+		<http:listener doc:name="Listener" doc:id="7d27a0f9-8c30-450a-9fef-ba106bcb5e9f" config-ref="HTTP_Listener_config" path="/bulkInsert"/>
+		<ee:transform doc:name="CSV Request" doc:id="2a6b947f-8ae2-4b41-a311-b4a10da2e804" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv header=true, lineSeparator="\n"
+---
+payload map (s) -> {
+    Name: s.name,
+    Age__c: s.age,
+    Email__c: s.email,
+    Course__c: s.course
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Before Calling Bulk Insert" doc:id="d3ca3284-187a-4999-8f66-11c4b9dc8c97" message="Bulk Insert Started" />
+		<salesforce:create-job-bulk-api-v2 objectType="Student__c" operation="insert" doc:name="BulK Insert" doc:id="95547e03-c453-497e-9ec2-5954419633c2" config-ref="Salesforce_Config1"/>
+		<logger level="INFO" doc:name="After Calling Bulk Insert" doc:id="94743e85-30fb-4d12-b2b8-d7d78ca11837" message="Bulk Insert Finished"/>
+		<ee:transform doc:name="Final Output" doc:id="4fd2500f-7313-4cbd-b53e-7b22440319b5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "createdDate": payload.createdDate,
+    "id":payload.id,
+    "state": if(payload.state == "InProgress") "Completed" else payload.state, 
+    "operation":payload.operation,
+    "object":payload.object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="bulkUpdateFlow" doc:id="b9940c70-0234-4850-bf29-63f1b791148a" >
+		<http:listener doc:name="Listener" doc:id="072539be-448b-4735-8a79-3ba493f7c4ab" config-ref="HTTP_Listener_config" path="/bulkUpdate" allowedMethods="PUT"/>
+		<ee:transform doc:name="CSV Request" doc:id="6618286e-b911-474f-baec-3e6d3c553fc8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv header=true, lineSeparator="\n"
+---
+payload map (s) -> {
+    Id: s.id,
+    Name: s.name,
+    Age__c: s.age,
+    Email__c: s.email,
+    Course__c: s.course,
+    Student_Id__c: s.studentId
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Before Bulk Upadte" doc:id="c0553e94-4bb8-4ef1-8e7f-1da4b477db2d" message="Bulk Upadte Started"/>
+		<salesforce:create-job-bulk-api-v2 doc:name="Bulk Update" doc:id="64d803a1-80f9-4d9f-940e-a4fc7557bec9" config-ref="Salesforce_Config1" objectType="Student__c" operation="update"/>
+		<logger level="INFO" doc:name="After Bulk Update" doc:id="a63e1fd3-fdf1-4dca-a2cd-ec8e38b6bd40" message="Bulk Update Finished"/>
+		<ee:transform doc:name="Final Output" doc:id="93b72c82-961e-4114-9b4c-08409e24f7b4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "createdDate": payload.createdDate,
+    "id":payload.id,
+    "state": if(payload.state == "InProgress") "Completed" else payload.state, 
+    "operation":payload.operation,
+    "object":payload.object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="bulkUpsertFlow" doc:id="297376a1-7aa2-43d7-9281-bd31378d85dd" >
+		<http:listener doc:name="Listener" doc:id="badbd7dd-3b4d-44f5-a47a-3f7f41f9dfa1" config-ref="HTTP_Listener_config" path="/bulkUpsert" allowedMethods="PUT"/>
+		<ee:transform doc:name="CSV Request" doc:id="ff659400-0ace-4dff-8063-15716aa76762" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv header=true, lineSeparator="\n"
+---
+payload map (s) -> {
+	Id: s.id,
+    Student_Id__c: s.studentId,
+    Name: s.name,
+    Age__c: s.age,
+    Email__c: s.email,
+    Course__c: s.course
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Before Bulk Upsert" doc:id="2c0dc92c-e67d-4596-98ba-080fcac1fdbb" message="Bulk Upsert Started"/>
+		<salesforce:create-job-bulk-api-v2 objectType="Student__c" operation="upsert" doc:name="Bulk Upsert" doc:id="6dbdd4d9-53b2-4382-b36f-9a38e3d3ee0a" config-ref="Salesforce_Config1" externalIdFieldName="Student_Id__c"/>
+		<logger level="INFO" doc:name="After Bulk Upsert" doc:id="84efdbb0-ce25-4e3e-a3cd-6847c4d08f37" message="Bulk Upsert Finished"/>
+		<ee:transform doc:name="Final Output" doc:id="40e47f08-94e2-47fc-94a9-60be3e4541a7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "createdDate": payload.createdDate,
+    "id":payload.id,
+    
+    "state": if(payload.state == "InProgress") "Completed" else payload.state, 
+    "operation":payload.operation,
+    "object":payload.object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="bulkDeleteFlow" doc:id="5b7e79af-59da-407c-bdb3-abddd8cd9c7c" >
+		<http:listener doc:name="Listener" doc:id="4b9444ff-6024-4ae4-9070-4f61c57e44d9" config-ref="HTTP_Listener_config" path="/bulkDelete" allowedMethods="DELETE"/>
+		<ee:transform doc:name="CSV Request" doc:id="da986292-9609-4de7-bd32-c5e017634c98" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv header=true, lineSeparator="\n"
+---
+payload map (s) -> {
+    Id: s.id
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Before Bulk Delete" doc:id="d35bc483-553a-4c50-a59d-8671aa7e8367" message="Bulk Delete Started"/>
+		<salesforce:create-job-bulk-api-v2 objectType="Student__c" operation="delete" doc:name="Bulk Delete" doc:id="d77aa57f-54a6-4c84-98b5-a8773f15a184" config-ref="Salesforce_Config1"/>
+		<logger level="INFO" doc:name="After Bulk Delete" doc:id="1577a554-9a2e-47d5-a21a-0d1e1f62cfbe" message="Bulk Delete Finished"/>
+		<ee:transform doc:name="Final Output" doc:id="04d6da6f-3270-4dd8-8f8c-a674470369de" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "createdDate": payload.createdDate,
+    "id":payload.id,
+    "state": if(payload.state == "InProgress") "Completed" else payload.state, 
+    "operation":payload.operation,
+    "object":payload.object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="bulkInsertV1Flow" doc:id="3fb2a853-7285-4d05-883f-e34e89725a30" >
+		<http:listener doc:name="Listener" doc:id="921b1966-6d7e-474b-b832-b70fdff24c99" config-ref="HTTP_Listener_config" path="/bulkInsertV1" allowedMethods="POST"/>
+		<ee:transform doc:name="Java Request" doc:id="bff9568a-39dc-4f1e-b989-08d460f689c6" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload map (s) -> {
+    Name: s.name,
+    Age__c: s.age,
+    Email__c: s.email,
+    Course__c: s.course
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Before Bulk InsertV1" doc:id="af6ab7b8-6b7f-4e2e-bba1-85c4cdf1495b" message="Bulk Insert V1 started"/>
+		<salesforce:create-job operation="insert" type="Student__c" doc:name="Create job" doc:id="91f84a2d-7d58-4161-b195-76d31e760d8b" config-ref="Salesforce_Config1" target="jobInfo"/>
+		<salesforce:create-batch doc:name="Create batch" doc:id="fc123d37-1df1-49de-abed-a24685eca6dd" config-ref="Salesforce_Config1" target="batchInfo" jobInfoBatch="#[vars.jobInfo]"/>
+		<salesforce:close-job doc:name="Close job" doc:id="b2c8f16a-4015-4e03-a48d-6a4a7f3d2109" config-ref="Salesforce_Config1" jobId="#[vars.jobInfo.id]"/>
+		<ee:transform doc:name="Final Output" doc:id="b9769c01-03a9-4642-b423-fa92fa144317" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "createdDate": payload.createdDate,
+    "id":payload.id,
+    "state": if(payload.state == "InProgress") "Completed" else payload.state, 
+    "operation":payload.operation,
+    "object":payload.object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
