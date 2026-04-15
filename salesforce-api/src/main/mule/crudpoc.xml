@@ -14,7 +14,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	</salesforce:sfdc-config>
 	<flow name="createcrudpocFlow" doc:id="4e56af0c-9f56-4cc6-a122-4808abde06dd" >
 		<http:listener doc:name="Listener" doc:id="e4b9013e-9886-44d9-b738-5f9457bcf697" config-ref="HTTP_Listener_config" path="/students" allowedMethods="POST"/>
-		<ee:transform doc:name="Transform Message" doc:id="390df9bf-6df9-48a6-8197-2111e0cf376d" >
+		<ee:transform doc:name="Java Request" doc:id="390df9bf-6df9-48a6-8197-2111e0cf376d" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/java
